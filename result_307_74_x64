@@ -1,0 +1,177 @@
+Драйвер 307_74 64бит  (Отладка на 2х 7900GS)
+При загрузки ведомой в отлаке машины, как только произошел коннект с windbg нажимаем ctrl+break и в строке вводим точку останова:
+ba e 1 nt!IopLoadDriver+0x1e7    получение адреса где записан путь до sys файла
+ba e 1 nt!IopLoadDriver+0x555  - загрузка точки входа в драйвер nvidia
+
+nt!IopLoadDriver+0x1e7 :  call    nt!IopBuildFullDriverPath //после выполнения в rcx содержится адрес где записан путь до sys файла
+nt!IopLoadDriver+0x555 :  call    qword ptr [rbx+58h] //вызов точки входа драйвера
+
+ nvlddmkm!nvDumpConfig+0x4b26a8  //точка входа драйвера мод драйвера 307.74
+//работаем с модом :
+ Заполнение адресов глобальных Колбеков (всего 336):
+ 1й адрес:
+nvlddmkm!nvDumpConfig+0x4b2cda:   lea     rax,[nvlddmkm!nvDumpConfig+0x2cb3e8]   //NvDM_AddDevice!
+ 3й адрес:
+nvlddmkm!nvDumpConfig+0x4b2cfc:	  lea     rax,[nvlddmkm!nvDumpConfig+0x2cd928]   //NvDM_LinkDevice!
+ 4й адрес:
+nvlddmkm!nvDumpConfig+0x4b2d0a:	  lea     rax,[*nvlddmkm!nvDumpConfig+0x2cb828]   //NvDM_StartDevice!
+
+Отличия по адресам нормального и модифицированного драйвера:
+#	Addr(file)	Addr(nvlddmkm+	Orig		Patch		Comment				Delta (A00)
+1	0x12ae06	0x12b806	fe811d040000	909090909090	inc byte ptr[rcx+41d]		//nvSecurity.h:192  SECURITY_INLINE int isEnvelopeHacked
+2	0x1c9ff0	0x1ca9f0	85c0		31c0		test eax,eax-> xor eax,eax	//вызывается после 8й точки из  кода функции  nvlddmkm+0x1ca924 
+3	0x1cd552	0x1cdf52 	fe811d040000	909090909090	inc byte ptr[rcx+41d]		//пока не вызывается
+4	0x2718e1	0x2722e1	7505 0fbaea0e	909090909090	jne address; bts edx,0; ->nop 
+5	0x271964	0x272364	0fba6d1011	9090909090	bts     dword ptr [rbp+10h],11h-> nop
+6	0x2719c1	0x2723c1	0fba6d1019	9090909090	bts     dword ptr [rbp+10h],19h-> nop
+7	0x2719f0	0x2723F0	0fba6d100b	9090909090	bts     dword ptr [rbp+10h],0bh-> nop
+8	0x271a54	0x272454	0fba6d100c	9090909090	bts     dword ptr [rbp+10h],0ch-> nop
+
+1я точка вызывается после NvDM_StartDevice и после надписи nvAdapter: Device Registry Path = '..
+4ая вызывается после первой
+2ая вызывается после 8й
+Потом пишется: CNvLAdapter* ... DriverModel is 0x1000 (WDDM 1.0) ******
+
+Последовательность 307_74 вызовов от [NvDM_StartDevice]
+dxgkrnl!DpiDxgkDdiStartDevice+0x52   call    qword ptr [rbp+98h]=nvlddmkm!nvDumpConfig+0x2dacc0(nvlddmkm+0xaef618)
+{
+ nvddm.cpp:2853 NvDM_StartDevice(...)		-----nvlddmkm!nvDumpConfig+0x2dacc0  (nvlddmkm+0xaef618)-----		-----?nvlddmkm!nvDumpConfig+0x2cb828-----?: 
+ nvlddmkm!nvDumpConfig+0x2dad0b(nvlddmkm+0xaef663)	 call    qword ptr [nvlddmkm!nvDumpConfig+0x1f98b0(nvlddmkm+0xa0e208)] =  nvlddmkm!nvDumpConfig+0x2d46b8(nvlddmkm+0xae9010)
+ {
+  nvlddmkm!nvDumpConfig+0x2d46b8(nvlddmkm+0xae9010)---------------
+  nvlddmkm!nvDumpConfig+0x2d480a(nvlddmkm+0xae9162):    call    qword ptr [nvlddmkm!nvDumpConfig+0x1ea3e8(nvlddmkm+0x9fed40)]= *nvlddmkm!nvDumpConfig+0x2cb828(nvlddmkm+0xae0180)
+  {
+   nvddm.cpp:2853 NvDM_StartDevice    -----nvlddmkm!nvDumpConfig+0x2cb828(nvlddmkm+0xae0180)------
+   nvlddm.cpp:2892 pAdapter->startDevice() nvlddmkm!nvDumpConfig+0x2cb911(nvlddmkm+0xae0269):    call    nvlddmkm+0x552bc   
+   {nvlAdapter.cpp:2842 CNvLAdapter::startDevice()	 -------nvlddmkm+0x552bc------
+    nvlAdapter.cpp:2926 Status = setupAdapter();		nvlddmkm+0x555f3:  call    qword ptr [rax+60h] = nvlddmkm+0xba45c     
+     {  nvlInit.cpp:855 SetupAdapter(...) 	-----nvlddmkm+0xba45c-----------
+	nvlInit.cpp:942	...nvAllocatePoolWithTag(..						nvlddmkm+0xba5f5:  call    nvlddmkm+0xca5a0
+	nvlInit.cpp:945  if (NT_SUCCESS(RtlUnicodeStringToAnsiString( 				nvlddmkm+0xba611:  call    qword ptr [nvlddmkm+0x60d048]
+	nvlInit.cpp:947  PF("Device Registry Path = '%s'", ANSIRegistryPath.Buffer);		nvlddmkm+0xba62a:  call    call    nvlddmkm+0xde404
+	nvlInit.cpp:949	 nvFreePoolWithTag(..							nvlddmkm+0xba637:  call    nvlddmkm+0xca5b8
+	nvlInit.cpp:972  Status = buildDeviceInfo()... 						nvlddmkm+0xba64f:  call    nvlddmkm+0xb9ed8
+	nvlInit.cpp:998  if (isSLI())					                      ? nvlddmkm+0xba65c:  cmp     byte ptr [nvlddmkm!nvDumpConfig+0x1ea3d1],sil
+	nvlInit.cpp:1004 if(!rmAlloc(.. 							nvlddmkm+0xba732:  call    nvlddmkm+0xeafc8 
+	nvlInit.cpp:1019 if (!rmControl(..							nvlddmkm+0xba773:  call    nvlddmkm+0xead00
+ 	nvlInit.cpp:1026 if (!rmSetupNvAdapter())						nvlddmkm+0xba77b:  call    nvlddmkm+0xea6d8
+	{	nvlRm.cpp:201 CNvLBaseAdapter::rmSetupNvAdapter()				--------nvlddmkm+0xea6d8---		
+		nvlRm.cpp:210 osdlRmSetupNvAdapter(..)							nvlddmkm+0xea702   call    nvlddmkm+0x1a778c		
+		{	osdl.c:3955   osdlRmSetupNvAdapter()						--------nvlddmkm+0x1a778c--------		
+			osdl.c:3966   rtlUnicodeStringToAnsiString(..)						nvlddmkm+0x1a77dc:   call    qword ptr [nvlddmkm+0x60d048]
+			osdl.c:3980   RtlFreeAnsiString(..)							nvlddmkm+0x1a780f:   call    qword ptr [nvlddmkm+0x60d6c0]
+			osdl.c:3982   threadStateInit(..)					 		nvlddmkm+0x1a781c:   call    nvlddmkm+0x1fbe90 
+			osdl.c:3985   rmApiLockAcquire(..)					 		nvlddmkm+0x1a7823:   call    nvlddmkm+0x2015f0 
+			osdl.c:3987   RmSetupNvAdapter(..) 							nvlddmkm+0x1a7832:   call    nvlddmkm+0x1a28d8
+			{	osinit.c:1441  RmSetupNvAdapter()						--------nvlddmkm+0x1a28d8-------- 
+				osinit.c:1475  !rmGpuLockIsOwner(..)							nvlddmkm+0x1a295f: call    nvlddmkm+0x201f14 	
+				osinit.c:1487  RtlInitUnicodeString(..)			  				nvlddmkm+0x1a29cb: call    qword ptr [nvlddmkm+0x60d0a0] 
+				osinit.c:1489  RegistryReadDword							nvlddmkm+0x1a29de: call    nvlddmkm+0x1a26b8
+				.......			 							
+				osinit.c:1675  status = gpumgrAttachGpu							nvlddmkm+0x1a2ba9: call    nvlddmkm+0x1c9f18 
+				{
+					gpu_mgr.c:1016 NV_STATUS gpumgrAttachGpu()	--------nvlddmkm+0x1c9f18--------- 	
+					gpu_mgr.c:1016 SYS_GET_OS(pSys);	mov     rax,qword ptr [nvlddmkm!nvDumpConfig+0x1f772] call    qword ptr [rax+20h]
+					gpu_mgr.c:1025 if ((status = osAttachGpu(..) 	nvlddmkm+0x1ca023: call nvlddmkm+0x1a1464
+					{
+						osinit.c:158 NV_STATUS osAttachGpu() -----------nvlddmkm+0x1a1464-----------
+						osinit.c:189 osReadRegistryDword(pGpu, strDevNodeRM, NV_REG_STR_RM_DISABLE_VISTA_BUG_295770_WAR,   nvlddmkm+0x1a14eb: call    nvlddmkm+0x202c14 //"RMDisableVistaBug295770War"
+					}
+				}
+				osinit.c:???	nvSecurity.h:192  SECURITY_INLINE int isEnvelopeHacked			nvlddmkm+0x1a2ea0: call    nvlddmkm+0x12b7ac 
+				{		--------nvlddmkm+0x12b7ac-------
+			!1я точка вызывается
+				}	 
+				osinit.c:2049	pDeviceInfo->ulGpuID = data >> 16;  // Gpu id is upper 2 bytes		nvlddmkm+0x1a318b:         shr     eax,10h
+			}
+			osdl.c:4002    rmApiLockRelease();									     call    nvlddmkm+0x2016e0
+			osdl.c:4005    threadStateFree(..)									     call    nvlddmkm+0x1fc050
+	}
+	nvlInit.cpp:1036  rmRestartFromTimeoutBusReset();				    	nvlddmkm+0xba79c:  call    nvlddmkm+0xeb9f8 
+	nvlInit.cpp:1174  initializeScalability(); 					   	nvlddmkm+0xba868:  call    nvlddmkm+0x46e48
+	{										    	--------nvlddmkm+0x46e48--------------
+					RtlInitUnicodeString(..)					nvlddmkm+0x46e81:	call    qword ptr [nvlddmkm+0x60d0a0]
+					RtlInitAnsiString (..)						nvlddmkm+0x46e93:	call    qword ptr [nvlddmkm+0x60d098] 
+					RtlAnsiStringToUnicodeString(..)				nvlddmkm+0x46eaa:	call    qword ptr [nvlddmkm+0x60d0a8]
+		nvlAdapter.cpp:11678  	nvRegistryRead(..)					 	nvlddmkm+0x46ecc:  	call    nvlddmkm+0xe1808
+					RtlFreeUnicodeString(..)					nvlddmkm+0x46ed8:	call    qword ptr [nvlddmkm+0x60d0b0]
+ 						RtlInitAnsiString (..)								call    qword ptr [nvlddmkm+0x60d098 
+						RtlAnsiStringToUnicodeString(..)						call    qword ptr [nvlddmkm+0x60d0a8]
+						RtlFreeUnicodeString(..)							call    qword ptr [nvlddmkm+0x60d0b0]
+		nvlAdapter.cpp:11692    !rmControl(..) 							nvlddmkm+0x46f66:	call    nvlddmkm+0xead00
+		{											--------nvlddmkm+0xead00------
+		 nvlRm.cpp:1172	  ::rmControl(&params, kernelMode);						nvlddmkm+0xead91: call    nvlddmkm+0xe7dac
+		 {nvlRm.cpp:5200										--------nvlddmkm+0xe7dac------
+		  nvlRm.cpp:5207  LOG(EVENT_		 								nvlddmkm+0xe7e27: call    nvlddmkm+0xc0b80
+		  nvlRm.cpp:5219  Nv04ControlKernel(pParams);	 							nvlddmkm+0xe7e2f: call    nvlddmkm+0x1952d0
+		  {
+		   _nv04Control	-> static void  _nv04ControlWithSecInfo()
+		   {
+		    entrypoints.c:880 pRmApi->ControlWithSecInfo(7 аргументов)->rmapiControlWithSecInfo() 	nvlddmkm+0x195318:	call    nvlddmkm+0x1b6e5c -> call    nvlddmkm+0x1b75b0				
+		    {control.c:248 _rmapiRmControl()	--------nvlddmkm+0x1b75b0------ 
+		     control.c:433 _rmResControlRoute	  	nvlddmkm+0x1b77e6:	call    nvlddmkm+0x1b733c
+		     {						------nvlddmkm+0x1b733c------				
+		      nvlddmkm+0x1b73b8: call    qword ptr [rax+8]= nvlddmkm+0x1b64a8
+		     {		---------- nvlddmkm+0x1b64a8:	push    rbp---------------
+		     			   nvlddmkm+0x1b64b6:	jmp     nvlddmkm+0x251894
+                      {	           -------------nvlddmkm+0x251894	   push    rbp	---------				
+			 			nvlddmkm+0x2518a9:	jmp     nvlddmkm+0x1b725c  
+		       {-------nvlddmkm+0x1b725c------
+			 nvlddmkm+0x1b7282:call    qword ptr [rax+8]=nvlddmkm+0x24e828
+ 			 {-------nvlddmkm+0x24e828----
+			  	 nvlddmkm+0x24e887: call    nvlddmkm+0x21beb8
+			  {-------nvlddmkm+0x21beb8------------
+				  nvlddmkm+0x21bf09: call    nvlddmkm+0x21cde8  // С одной карты  сюда не входит
+		           {		 -------nvlddmkm+0x21cde8--------
+					nvlddmkm+0x21cf44:call   nvlddmkm+0x1cb3d0 
+					{
+						nvlddmkm+0x1cb741:call    nvlddmkm+0x202c14	//osReadRegistryDword (MB_DisableVideoLink)
+					}
+ 			
+					//osReadRegistryDword (ForceP2P)
+
+					nvlddmkm+0x21cf63: 	call    nvlddmkm+0x811658
+					{
+					    	nvlddmkm+0x811658:	jmp     nvlddmkm+0x271fac   
+			!			ИСКОМАЯ ФУНКЦИЯ
+						{	--------nvlddmkm+0x271fac
+					 		nvlddmkm+0x271fdc:	mov     rax,qword ptr [nvlddmkm!nvDumpConfig+0x1f7728] 
+					 		nvlddmkm+0x271ff3:	call    qword ptr [rax+20h]=nvlddmkm+0x1b195c
+							.................
+					 		nvlddmkm+0x272002:	mov     rax,qword ptr [nvlddmkm!nvDumpConfig+0x1f7728] 
+					 		nvlddmkm+0x272011:	call    qword ptr [rax+20h]=nvlddmkm+0x1b195c
+							.................
+							nvlddmkm+0x27214e	mov     rax,qword ptr [nvlddmkm!nvDumpConfig+0x1f7728] 
+					 		nvlddmkm+0x27202a:	call    qword ptr [rax+20h]=nvlddmkm+0x1b195c
+							.................
+				objgpu.c:4588  if ((osReadRegistryDword(pGpu, strDevNodeRM, NV_REG_STR_RM_MB_CHECK_REV	= "MB_CheckREV"	 nvlddmkm+0x27226c: lea     r8,[nvlddmkm+0x602388] ... call    nvlddmkm+0x202c14 
+				objgpu.c:4594  if ((osReadRegistryDword(pGpu, strDevNodeRM, NV_REG_STR_RM_MB_CHECK_VBIOS="MB_CheckVBIOS" nvlddmkm+0x27229f: lea     r8,[nvlddmkm+0x602394] ... call    nvlddmkm+0x202c14 
+																		.........		
+	!4я точка вызывается				nvlddmkm+0x2722e1	!4я точка вызывается
+				nvFreePoolWithTag				call    nvlddmkm+0xca608
+				}
+			}
+		
+
+Функции 307_74
+osReadRegistryDwordBase()	nvlddmkm+0x1a698c
+osReadRegistryDword () 	 	nvlddmkm+0x202c14	
+RM_ASSERT()		        nvlddmkm+0x1b47a0				
+NV_PRINTF()		 	nvlddmkm+0x202af8
+gpuGetInstance()		nvlddmkm+0x23ab50
+LOG(EVENT_		 	nvlddmkm+0xc0b80
+					
+Общие NT функции 307_74_x64
+RtlInitUnicodeString()		nvlddmkm+0x60d0a0
+rtlUnicodeStringToAnsiString()	nvlddmkm+0x60d048
+
+
+Последовательность Вызова регистровых строк osReadRegistryDword()  начиная от функции  nvlAdapter.cpp:2926 Status = setupAdapter();  nvlddmkm+0xba45c
+ nvlddmkm+0x1df944 RmEnableI2CNanny
+
+Последовательность Вызова регистровых строк osReadRegistryDword()  начиная от функции nvlddmkm+0x21beb8
+MB_DisableVideoLink
+ForceP2P
+MB_CheckREV
+MB_CheckVBIOS
+MB_SkipFBSizeCompare
