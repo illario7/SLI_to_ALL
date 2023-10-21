@@ -1,0 +1,119 @@
+nt!PnpProcessTargetDeviceEvent+0x12 (mov     edi,dword ptr [ebx])) //в edi содержится адрес где записан PCI девайс
+[edi+50]  = "...P.C.I.\.V.E.N._.1.0.D.E.&.D.E.V._.0.2.9.2.&.S.U.B...."
+
+
+nt!IopLoadDriver+0x249:      call    nt!IopBuildFullDriverPath  //после выполнения в ecx содержится адрес где записан путь до sys файла
+
+nt!IopLoadDriver+0x62f: call    dword ptr [edi+2Ch] //вроде выхов точки входа usbhub!GsDriverEntry
+
+nvlddmkm!nvDumpConfig+0x3cf428: 55              push    ebp  //Точка входа
+
+1: nvlddmkm!nvDumpConfig+0x24d606
+2: nvlddmkm!nvDumpConfig+0x24dc1c
+3: nvlddmkm!nvDumpConfig+0x24ef3a
+4: nvlddmkm!nvDumpConfig+0x24d906 //NvDM_StartDevice(...)
+	nvlddmkm!nvDumpConfig+0x24d996:      call    nvlddmkm+0x41fda 				//nvlddm.cpp:2892 	pAdapter->startDevice() 
+	 nvlddmkm+0x42270:	       call    dword ptr [eax+30h]=nvlddmkm+0x93eae	//nvlAdapter.cpp:2926  	Status = setupAdapter();
+	  nvlddmkm+0x94171:             call nvlddmkm+0xba3da		 //nvlInit.cpp:1026 if (!rmSetupNvAdapter())
+ 	   nvlddmkm+0xba3f5:		 call    nvlddmkm+0x152a8c	   //nvlRm.cpp:210 call osdlRmSetupNvAdapter(..)
+	    nvlddmkm+0x152b08:            call    nvlddmkm+0x14ed20         //osdl.c:3987   RmSetupNvAdapter(..) 
+             nvlddmkm+0x14edfe:	           call    nvlddmkm+0x14eb92		//osinit.c:1489  RegistryReadDword()
+             nvlddmkm+0x14ef51:	           call    nvlddmkm+0x16c654		//osinit.c:1675  status = gpumgrAttachGpu	
+	     nvlddmkm+0x14f1fb:		   call    nvlddmkm+0xef2d6 		//osinit.c:???	nvSecurity.h:192  SECURITY_INLINE int isEnvelopeHacked 
+!ТОЧКА	1	nvlddmkm+0xef345: 	     inc     byte ptr [ecx+419h]  //fe8119040000 to nop 90 90 90 90 90 90
+	  nvlddmkm+0x94241:		call    nvlddmkm+0x3641c	 //nvlInit.cpp:1174 	 if (!isSLI()) initializeScalability();
+	   nvlddmkm+0x364fb:		 call    nvlddmkm+0xba7e0 		//NvlAdapter.cpp:11692    !rmControl(..)
+	    nvlddmkm+0xba851:		  call    nvlddmkm+0xb8cea		//nvlRm.cpp:1172	  ::rmControl(..)
+	     nvlddmkm+0xb8d2a:      		call    nvlddmkm+0x144a7c	//nvlRm.cpp:5219  Nv04ControlKernel() 
+	      nvlddmkm+0x144aad:      	call    nvlddmkm+0x15e448
+	       nvlddmkm+0x15e45f:     		call    nvlddmkm+0x15e976	//Вызов функции _rmapiRmControl()
+		nvlddmkm+0x15eb4f:	      call    nvlddmkm+0x15e794		//control.c:433 Вызов функции _rmResControlRoute()
+		 nvlddmkm+0x15e7f5:   	call    dword ptr [eax+4] = nvlddmkm+0x15ddb0	//вместо    nvlddmkm+0x1b73b8: call    qword ptr [rax+8]= nvlddmkm+0x1b64a8
+		   nvlddmkm+0x15ddb4:      jmp     nvlddmkm+0x1d4f28 
+		    nvlddmkm+0x1d4f33        call    nvlddmkm+0x15e6fe       			
+		     nvlddmkm+0x15e71e: call    dword ptr [eax+8]=nvlddmkm+0x1d2b10
+		      nvlddmkm+0x1d2b2a:call    nvlddmkm+0x1ac740
+		       nvlddmkm+0x1ac74c:  call    nvlddmkm+0x1ad4fc
+			nvlddmkm+0x1ad4fc:  push    ebp
+			nvlddmkm+0x1ad525:  ja      nvlddmkm+0x1ad52c
+!		 	nvlddmkm+0x1ad535:  call    nvlddmkm+0x1ad33a   // С одной карты  сюда не входит!
+	  		 nvlddmkm+0x1ad463:  call    nvlddmkm+0x65e8e4 
+			  nvlddmkm+0x65e8e4:  jmp     nvlddmkm+0x1ed910
+!	ИСКОМАЯ ФУНКЦИЯ	4  {----nvlddmkm+0x1ed910:
+			   	nvlddmkm+0x1edaf8:  push    offset nvlddmkm+0x4b2fb2 ; mov     esi,offset nvlddmkm!nvDumpConfig+0x1eacc8 //Подготовка к osReadRegistryDword(…"MB_CheckREV"
+			   	nvlddmkm+0x1edb08:  call    nvlddmkm+0x19818c //osReadRegistryDword
+			   	nvlddmkm+0x1edb21:  push    offset nvlddmkm+0x4b2fbe 	
+ 				nvlddmkm+0x1edb2c:  call    nvlddmkm+0x19818c //osReadRegistryDword
+				..........
+				nvlddmkm+0x1edb46:  call    nvlddmkm+0x1f0ed2 	//Функция в которой возвращается что-то не хорошее
+!4я точка	7507		nvlddmkm+0x1edb4d:  jne     nvlddmkm+0x1edb56	//Заменить nop nop
+!5я точка	814dfc00400000  nvlddmkm+0x1edb4f:  or  dword ptr [ebp-4],4000h // 7 байт ЗАМЕНИТЬ  на  c7 45 fc 00 00 00 00 	 mov dword ptr[ebp-4],0
+				nvlddmkm+0x1edb56:  xor     esi,esi			//ОСТАВИТЬ без изменений
+				nvlddmkm+0x1edb58:  mov     dword ptr [ebp+14h],esi	//ОСТАВИТЬ без изменений
+!6я точка			nvlddmkm+0x1edb5b:  //Все что есть заменить на 90 90 90 90 90 90 90 90 90    (8 раз NOP)
+		8b45f8 		nvlddmkm+0x1edb63:  mov     eax,dword ptr [ebp-8] //ОСТАВИТЬ без изменений
+
+				.....
+!7я точка	814dfc00000200	nvlddmkm+0x1edbb0:  or      dword ptr [ebp-4],20000h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+		8b45f8		nvlddmkm+0x1edbb7:   mov    eax,dword ptr [ebp-8] //ОСТАВИТЬ без изменений
+				.....
+!8 точка	814dfc00000001  nvlddmkm+0x1edbd8:  or      dword ptr [ebp-4],1000000h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+				nvlddmkm+0x1edbdf:	//ОСТАВИТЬ без изменений
+				.....
+!9 точка	814dfc00000002  nvlddmkm+0x1edbfd:  or      dword ptr [ebp-4],2000000h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+				nvlddmkm+0x1edc04:   cmp     byte ptr [ebp+0Bh],0	//ОСТАВИТЬ без изменений
+				.......
+!10 точка	814dfc00080000  nvlddmkm+0x1edc2d:  or      dword ptr [ebp-4],800h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+				nvlddmkm+0x1edc3:    mov     eax,dword ptr [ebp-8]	//ОСТАВИТЬ без изменений
+
+!11 точка	814dfc00100000  nvlddmkm+0x1edc8d:  or      dword ptr [ebp-4],1000h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+				nvlddmkm+0x1edc94:   jmp     nvlddmkm+0x1edc99	//ОСТАВИТЬ без изменений
+
+!ВЫЗОВ ТОЧКИ 2			nvlddmkm+0x1edcaa:  call    nvlddmkm+0x16cd96
+		85c0			nvlddmkm+0x16ce24:    test    eax,eax   ЗАМЕНЯМ 85c0 test eax,eax НА->  31с0 xor eax,eax
+
+!12 точка 	814dfc00000100   nvlddmkm+0x1edcc9:   or      dword ptr [ebp-4],10000h // 7 байт ЗАМЕНИТЬ  на 90 90 90 90 90 90 90 
+		46               nvlddmkm+0x1edcd0:   inc     esi //ОСТАВИТЬ без изменений
+
+
+ nvlddmkm+0x1edc8d
+
+
+Функции:
+
+LOG(..	 		nvlddmkm+0x996a2
+osReadRegistryDword 	nvlddmkm+0x19818c
+
+Общие NT функции 307_74_x86
+RtlInitUnicodeString() nvlddmkm+0x4bb094
+
+Сопоставление адресов (РАЗНИЦА A00):
+nvlddmkm+addr		driver_file_address
+	 addr = driver_file_address + A00	   
+nvlddmkm+0x15e64d	0x15dc4d
+nvlddmkm+0x15e68e	0x15dc8e
+nvlddmkm+0x1ad56f	0x1acb6f
+
+
+
+1:nvlddmkm+0xef345
+8b4d085e0f010f3b79085f5b7409010f fe8119040000  eb010f
+8b4d085e0f010f3b79085f5b7409010f 909090909090  eb010f
+
+2:nvlddmkm+0x16ce24
+751bff75fcff75f85653ff96dc150000 85c0 740b  
+751bff75fcff75f85653ff96dc150000 31c0 740b 
+
+3:? не вызывается
+
+4-6: nvlddmkm+0x1edb4d
+84c0 7507 814dfc00400000 33f6897514 85ff0f8479010000
+84c0 9090 c745fc00000000 33f6897514 9090909090909090
+
+7:nvlddmkm+0x1edbb0
+7407 814dfc00000200 8b45f8 
+7407 90909090909090 8b45f8 
+
+12:nvlddmkm+0x1edcc9
+7407 814dfc00000100 46
+7407 90909090909090 46
